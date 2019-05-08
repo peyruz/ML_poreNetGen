@@ -3,7 +3,7 @@
 %% Settings
 % % Dataset
 % % Number of training networks to generate
-% Ntr=1000
+Ntr=1
 % rMeanBounds=[]
 % rStdBounds=[]
 % thMeanBounds=[]
@@ -19,10 +19,11 @@ poreNetInfo.nPor=100;
 poreNetInfo.porDist='normal';
 poreNetInfo.thDist='normal';
 
-meanRPor=
-devRPor=
+meanRPor=50;
+devRPor=5;
 
-poreNetInfo.thDistParam.meanTh
+poreNetInfo.thDistParam.meanTh=10;
+poreNetInfo.thDistParam.meanTh=1;
 
 frame=ceil(meanRPor+3*devRPor);
 
@@ -44,11 +45,11 @@ for nn=1:Ntr
     
     tic
     
-    poreNetInfo.fileName=strcat(poreNetInfo.baseFileName,{'_'},...
-        poreNetInfo.porShape,{'-'},...
-        poreNetInfo.thShape,{'.dxf'});
-    poreNetInfo.fileName=poreNetInfo.fileName{1};
-    
+%     poreNetInfo.fileName=strcat(poreNetInfo.baseFileName,{'_'},...
+%         poreNetInfo.porShape,{'-'},...
+%         poreNetInfo.thShape,{'.dxf'});
+%     poreNetInfo.fileName=poreNetInfo.fileName{1};
+%     
 %     % Convert the input diameter-based values into radius-based
 %     % Primary
 %     switch poreNetInfo.porDist
@@ -232,5 +233,146 @@ for nn=1:Ntr
         poreNetInfo.nTh=size(startsMidP,1);
     end
     
+    % Delete the pores removed during merging (denoted by NaN)
+    NaNMask=isnan(radii);
+    radii=radii(~NaNMask);
+    centers=centers(~NaNMask,:);
+    poreNetInfo.nPor=length(radii);
+    poreNetInfo.nTh=length(widths);
+
+    % Generate the DXF file
+    %% Generate pores
+fprintf('Generating pores..')
+% Primary
+switch poreNetInfo.porShape
     
+    case 'irregular'
+        % Generate the polygons
+        x = irrPolGen_Par1_2(radii,poreNetInfo.Pore_Spiky,poreNetInfo.Pore_ScaleOfDetail);
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the barycenter of the polygon to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
+        
+    case 'circle'
+        % Generate the circles
+        x = circleGen(radii);
+        
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the center of the circle to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
+        
+    case 'triangle'
+        % Generate the squares
+        x = triGen(radii);
+        
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the center of the circle to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
+        
+    case 'square'
+        % Generate the squares
+        x = sqGen(radii);
+        
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the center of the circle to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
+        
+end
+    fprintf('Done \n')
+
+%% Generate throats
+fprintf('Generating throats..')
+% Primary
+% Calculate throat direction vectors
+throatVecs=[endsMidP(:,1)-startsMidP(:,1), endsMidP(:,2)-startsMidP(:,2)];
+throatLengths=(throatVecs(:,1).^2+throatVecs(:,2).^2).^0.5;
+throatVecs=throatVecs./repmat(throatLengths,1,2);
+
+switch poreNetInfo.thShape
+    
+    case 'rough'
+        % Generate rough rectangles
+        xt = RoughRecGen3(throatLengths, widths,throatVecs,...
+            poreNetInfo.Throat_Spiky,...
+            poreNetInfo.Throat_ScaleOfDetail,...
+            poreNetInfo.Throat_WiggleAmount);
+        
+        % Translate  left-middle point of the rectangle to the desired location
+        for ii=1:poreNetInfo.nTh
+            xt{ii} = xt{ii}+repmat( throatVecs(ii,:)*throatLengths(ii)/2+startsMidP(ii,:),size(xt{ii},1),1 );
+        end
+        
+    case 'smooth'
+        % Generate rough rectangles
+        xt = recGen(throatLengths, widths,throatVecs);
+        
+        % Translate  left-middle point of the rectangle to the desired location
+        for ii=1:poreNetInfo.nTh
+            xt{ii} = xt{ii}+repmat( throatVecs(ii,:)*throatLengths(ii)/2+startsMidP(ii,:),size(xt{ii},1),1 );
+        end
+        
+end
+
+% Grain
+if poreNetInfo.GrainPorosity
+    % Calculate grain throat direction vectors
+    grThroatVecs=[grEndsMidP(:,1)-grStartsMidP(:,1), grEndsMidP(:,2)-grStartsMidP(:,2)];
+    grThroatLengths=(grThroatVecs(:,1).^2+grThroatVecs(:,2).^2).^0.5;
+    grThroatVecs=grThroatVecs./repmat(grThroatLengths,1,2);
+    
+    switch poreNetInfo.thShape
+        
+        case 'rough'
+            % Generate rough rectangles
+            xgrt = RoughRecGen3(grThroatLengths, grWidths,grThroatVecs,...
+                poreNetInfo.grThroat_Spiky,...
+                poreNetInfo.grThroat_ScaleOfDetail,...
+                poreNetInfo.grThroat_WiggleAmount);
+            
+            % Translate  left-middle point of the rectangle to the desired location
+            for ii=1:poreNetInfo.gr_nTh
+                xgrt{ii} = xgrt{ii}+repmat( grThroatVecs(ii,:)*grThroatLengths(ii)/2+grStartsMidP(ii,:),size(xgrt{ii},1),1 );
+            end
+            
+        case 'smooth'
+            % Generate rough rectangles
+            xgrt = recGen(grThroatLengths, grWidths,grThroatVecs);
+            
+            % Translate  left-middle point of the rectangle to the desired location
+            for ii=1:poreNetInfo.gr_nTh
+                xgrt{ii} = xgrt{ii}+repmat( grThroatVecs(ii,:)*grThroatLengths(ii)/2+grStartsMidP(ii,:),size(xgrt{ii},1),1 );
+            end
+    end
+    xt=[xt,xgrt];
+end
+
+fprintf('Done \n')
+
+x=[x,xt];
+
+
+%% Union the pores and throats
+fprintf('Performing polygon boolean operations..')
+[shapeCell , porArea] = unionMultiShapes(x, 512, 256);
+fprintf('Done \n')
+
+poreNetInfo.porosity = porArea / totalArea;
+
+% ------------ Correct the next line, adjust for new parameters
+% ---------------------------%%%
+% poreNetInfo=orderfields(poreNetInfo,{'nPor','meanPor','devPor','porShape','MergeOverlappingPores','nTh','meanTh','devTh','thShape','fileName','porosity'});
+
+fprintf('Generating the DXF file..')
+genDXF(shapeCell, poreNetInfo.DomainW, poreNetInfo, poreNetInfo.fileName);
+fprintf('Done \n \n')
+fprintf('Total generation time: %1.2f seconds \n', toc)
+
 end
