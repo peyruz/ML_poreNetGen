@@ -10,7 +10,7 @@ Ntr=1
 % thStdsBounds=[]
 
 % Network
-poreNetInfo.fileName='train1.dxf';
+% poreNetInfo.fileName=
 
 poreNetInfo.DomainW=1000;
 poreNetInfo.DomainH=1000;
@@ -22,18 +22,11 @@ poreNetInfo.thDist='normal';
 meanRPor=50;
 devRPor=5;
 
-poreNetInfo.porShape='circle';
-poreNetInfo.thShape='smooth';
-
 poreNetInfo.thDistParam.meanTh=10;
-poreNetInfo.thDistParam.devTh=1;
-
-poreNetInfo.MergeOverlappingPores=true;
+poreNetInfo.thDistParam.meanTh=1;
 
 frame=ceil(meanRPor+3*devRPor);
 
-poreNetInfo.porDistParam.meanDPor=meanRPor*2;
-poreNetInfo.porDistParam.devDPor=devRPor*2;
 
 %% Generation of training samples
 % Preallocate
@@ -173,8 +166,8 @@ for nn=1:Ntr
     fprintf('Done\n');
     
     %% Generate the sizes of pores and throats
-    radii=abs(normrnd(meanRPor,devRPor,poreNetInfo.nPor,1));
-    widths=abs(normrnd(poreNetInfo.thDistParam.meanTh,poreNetInfo.thDistParam.devTh,poreNetInfo.nTh,1));
+            radii=abs(normrnd(meanRPor,devRPor,poreNetInfo.nPor,1));
+            widths=abs(normrnd(poreNetInfo.thDistParam.meanTh,poreNetInfo.thDistParam.devTh,poreNetInfo.nTh,1));
     
     %% Merge the overlapping primary pores if requested by user
     if poreNetInfo.MergeOverlappingPores
@@ -192,83 +185,94 @@ for nn=1:Ntr
     centers=centers(~NaNMask,:);
     poreNetInfo.nPor=length(radii);
     poreNetInfo.nTh=length(widths);
-    
-    
+
+    % Generate the DXF file
     %% Generate pores
-    fprintf('Generating pores..')
-    % Primary
-    switch poreNetInfo.porShape
+fprintf('Generating pores..')
+% Primary
+switch poreNetInfo.porShape
+      
+    case 'circle'
+        % Generate the circles
+        x = circleGen(radii);
         
-        case 'circle'
-            % Generate the circles
-            x = circleGen(radii);
-            
-            % Plot the pores
-            for ii=1:poreNetInfo.nPor
-                % Translate  the center of the circle to the given pore location
-                x{ii} = x{ii} + centers(ii,:);
-            end
-            
-        case 'triangle'
-            % Generate the squares
-            x = triGen(radii);
-            
-            % Plot the pores
-            for ii=1:poreNetInfo.nPor
-                % Translate  the center of the circle to the given pore location
-                x{ii} = x{ii} + centers(ii,:);
-            end
-            
-        case 'square'
-            % Generate the squares
-            x = sqGen(radii);
-            
-            % Plot the pores
-            for ii=1:poreNetInfo.nPor
-                % Translate  the center of the circle to the given pore location
-                x{ii} = x{ii} + centers(ii,:);
-            end
-            
-    end
-    fprintf('Done \n')
-    
-    %% Generate throats
-    fprintf('Generating throats..')
-    % Primary
-    % Calculate throat direction vectors
-    throatVecs=[endsMidP(:,1)-startsMidP(:,1), endsMidP(:,2)-startsMidP(:,2)];
-    throatLengths=(throatVecs(:,1).^2+throatVecs(:,2).^2).^0.5;
-    throatVecs=throatVecs./repmat(throatLengths,1,2);
-    
-    switch poreNetInfo.thShape
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the center of the circle to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
         
-        case 'smooth'
-            % Generate rough rectangles
-            xt = recGen(throatLengths, widths,throatVecs);
-            
-            % Translate  left-middle point of the rectangle to the desired location
-            for ii=1:poreNetInfo.nTh
-                xt{ii} = xt{ii}+repmat( throatVecs(ii,:)*throatLengths(ii)/2+startsMidP(ii,:),size(xt{ii},1),1 );
-            end
-            
-    end
-    
+    case 'triangle'
+        % Generate the squares
+        x = triGen(radii);
+        
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the center of the circle to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
+        
+    case 'square'
+        % Generate the squares
+        x = sqGen(radii);
+        
+        % Plot the pores
+        for ii=1:poreNetInfo.nPor
+            % Translate  the center of the circle to the given pore location
+            x{ii} = x{ii} + centers(ii,:);
+        end
+        
+end
     fprintf('Done \n')
+
+%% Generate throats
+fprintf('Generating throats..')
+% Primary
+% Calculate throat direction vectors
+throatVecs=[endsMidP(:,1)-startsMidP(:,1), endsMidP(:,2)-startsMidP(:,2)];
+throatLengths=(throatVecs(:,1).^2+throatVecs(:,2).^2).^0.5;
+throatVecs=throatVecs./repmat(throatLengths,1,2);
+
+switch poreNetInfo.thShape
     
-    x=[x,xt];
-    
-    
-    %% Union the pores and throats
-    fprintf('Performing polygon boolean operations..')
-    [shapeCell , porArea] = unionMultiShapes(x, 512, 256);
-    fprintf('Done \n')
-    
-    poreNetInfo.porosity = porArea / totalArea;
-    
-    %% Generate DXF file
-    fprintf('Generating the DXF file..')
-    genDXF(shapeCell, poreNetInfo.DomainW, poreNetInfo, poreNetInfo.fileName);
-    fprintf('Done \n \n')
-    fprintf('Total generation time: %1.2f seconds \n', toc)
-    
+    case 'rough'
+        % Generate rough rectangles
+        xt = RoughRecGen3(throatLengths, widths,throatVecs,...
+            poreNetInfo.Throat_Spiky,...
+            poreNetInfo.Throat_ScaleOfDetail,...
+            poreNetInfo.Throat_WiggleAmount);
+        
+        % Translate  left-middle point of the rectangle to the desired location
+        for ii=1:poreNetInfo.nTh
+            xt{ii} = xt{ii}+repmat( throatVecs(ii,:)*throatLengths(ii)/2+startsMidP(ii,:),size(xt{ii},1),1 );
+        end
+        
+    case 'smooth'
+        % Generate rough rectangles
+        xt = recGen(throatLengths, widths,throatVecs);
+        
+        % Translate  left-middle point of the rectangle to the desired location
+        for ii=1:poreNetInfo.nTh
+            xt{ii} = xt{ii}+repmat( throatVecs(ii,:)*throatLengths(ii)/2+startsMidP(ii,:),size(xt{ii},1),1 );
+        end
+        
+end
+
+fprintf('Done \n')
+
+x=[x,xt];
+
+
+%% Union the pores and throats
+fprintf('Performing polygon boolean operations..')
+[shapeCell , porArea] = unionMultiShapes(x, 512, 256);
+fprintf('Done \n')
+
+poreNetInfo.porosity = porArea / totalArea;
+
+fprintf('Generating the DXF file..')
+genDXF(shapeCell, poreNetInfo.DomainW, poreNetInfo, poreNetInfo.fileName);
+fprintf('Done \n \n')
+fprintf('Total generation time: %1.2f seconds \n', toc)
+
 end
